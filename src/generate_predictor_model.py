@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 # Load Parameters
 load_dotenv()
+
 # Set Values
 sequence_length = int(os.getenv("SEQUENCE_LENGTH"))
 hidden_size = int(os.getenv("HIDDEN_SIZE"))
@@ -19,7 +20,8 @@ training_cycles = int(os.getenv("TRAINING_CYCLES"))
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}, {torch.cuda.get_device_name(0)}")
 
-inflation_data_file = "./inflation_data.csv"
+# Read CSV monthly inflation data
+inflation_data_file = "../data/training_inflation_data.csv"
 inflation_data = pd.read_csv(inflation_data_file)["Valor"].values
 
 def create_sequences(data, seq_length = 12):
@@ -51,7 +53,7 @@ def create_variable_sequences(data):
     return np.array(sequences, dtype=object), np.array(targets)
 
 # Check if saved sequences file exists
-sequences_file = "sequences_data.npz"
+sequences_file = "../data/sequences_data.npz"
 if os.path.exists(sequences_file):
     # Load sequences and targets from saved file
     loaded_data = np.load(sequences_file, allow_pickle=True)
@@ -66,11 +68,6 @@ else:
 
 # Generated input/outputs from inflation data
 sequences ,targets = create_variable_sequences(inflation_data)
-# sequences ,targets = create_sequences(inflation_data, sequence_length)
-
-# Transform arrays to tensors (For fixed size sequences)
-# sequences = torch.tensor(sequences, dtype= torch.float32).view(-1, sequence_length, input_size).to(device)
-# targets = torch.tensor(targets, dtype= torch.float32).view(-1, output_size).to(device)
 
 # Convert sequences to tensors with proper shapes
 sequences_tensor = [torch.tensor(seq, dtype=torch.float32).view(-1, 1) for seq in sequences]
@@ -80,7 +77,6 @@ targets_tensor = torch.tensor(targets, dtype=torch.float32).view(-1, output_size
 class RNNInflationPredictor(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(RNNInflationPredictor, self).__init__()
-
         self.rnn = nn.RNN(input_size, hidden_size, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
@@ -119,17 +115,5 @@ for cycle in range(training_cycles):
     if total_loss / len(sequences_tensor) < 1.0:
         break
 
-    # Uncomment when using fixed size sequences
-    # output = model(sequences)
-    # loss = criterion(output, targets)
-    # optimizer.zero_grad()
-    # loss.backward()
-    # optimizer.step()
-    #
-    # if (cycle + 1) % 100 == 0:
-    #     print(f'Cycle {cycle+1}/{training_cycles} , Loss: {loss.item():.4f}')
-    #
-    # if loss.item() < 1.0: break
-
 # Save the predictor model
-torch.save(model.state_dict(), "inflation_predictor_model.pth")
+torch.save(model.state_dict(), "../models/inflation_predictor_model_v1.pth")

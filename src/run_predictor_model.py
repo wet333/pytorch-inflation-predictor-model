@@ -31,7 +31,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load model and set to evaluation mode
 model = RNNInflationPredictor(input_size=input_size, hidden_size=hidden_size, output_size=output_size).to(device)
-model.load_state_dict(torch.load("inflation_predictor_model.pth", weights_only=True))
+model.load_state_dict(torch.load("../models/inflation_predictor_model_v1.pth", weights_only=True))
 model.eval()
 
 def create_sequences(data, seq_length=12):
@@ -41,11 +41,11 @@ def create_sequences(data, seq_length=12):
     return np.array(sequences)
 
 # Load new data
-new_data_file = "./new_inflation_data.csv"
-new_inflation_data = pd.read_csv(new_data_file)["Valor"].values
+data_file = "../data/prediction_inflation_data.csv"
+inflation_data = pd.read_csv(data_file)["Valor"].values
 
 # Prepare input sequence from the end of new data
-sequences = create_sequences(new_inflation_data, sequence_length)
+sequences = create_sequences(inflation_data, sequence_length)
 last_sequence = torch.tensor(sequences[-1], dtype=torch.float32).view(1, sequence_length, input_size).to(device)
 
 # Make prediction
