@@ -51,4 +51,4 @@ last_sequence = torch.tensor(sequences[-1], dtype=torch.float32).view(1, sequenc
 # Make prediction
 with torch.no_grad():
     prediction = model(last_sequence)
-    print(f'{sequences[-1]} --> {prediction.item()}')
+    print(f'{last_sequence} --> {prediction.item()}')
