@@ -79,4 +79,7 @@ for cycle in range(training_cycles):
 
     print(f'Cycle {cycle + 1}/{training_cycles}, Loss: {total_loss / len(data_loader):.4f}')
 
-torch.save(model.state_dict(), here + "/../models/inflation_predictor_model_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pth")
+models_folder = here + "/../models"
+os.makedirs(models_folder, exist_ok=True)
+
+torch.save(model.state_dict(), models_folder + "/inflation_predictor_model_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pth")
