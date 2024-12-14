@@ -2,62 +2,39 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import pandas as pd
-import numpy as np
 import os
-from dotenv import load_dotenv
+from datetime import datetime
+from dotenv import load_dotenv, set_key
 
-# Load Parameters
+here = os.path.dirname(__file__)
+
+# Load NN Configuration Parameters
 load_dotenv()
 
-# Set Values
-sequence_length = int(os.getenv("SEQUENCE_LENGTH"))
 hidden_size = int(os.getenv("HIDDEN_SIZE"))
-input_size = int(os.getenv("INPUT_SIZE"))
 output_size = int(os.getenv("OUTPUT_SIZE"))
 learning_rate = float(os.getenv("LEARNING_RATE"))
 training_cycles = int(os.getenv("TRAINING_CYCLES"))
 
-# Decay rate (the rate by which the gradient steps are shortened)
-decay_rate = 0.5
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}, {torch.cuda.get_device_name(0)}")
 
 # Read CSV monthly inflation data
-inflation_data_file = "../data/training_inflation_data.csv"
-inflation_data = pd.read_csv(inflation_data_file)["Valor"].values
+inflation_data_file = here + "/../data/datos_de_inflacion_mejorados.csv"
+inflation_data = pd.read_csv(inflation_data_file)
 
-def create_sequences(data, seq_length = 12):
-    sequences = []
-    targets = []
-    for i in range(len(data) - seq_length):
-        sequences.append(data[i: i + seq_length])
-        targets.append(data[i + seq_length])
-    return np.array(sequences), np.array(targets)
+features = inflation_data[["Lag_1", "Lag_3", "Lag_6", "Rolling_Mean_3", "Rolling_Std_3"]].values
+targets = inflation_data["Valor"].values
 
-def create_variable_sequences(data):
-    sequences = []
-    targets = []
-    for seq_length in range(len(data), 1, -1):
-        sequences.append(data[:seq_length-1])
-        targets.append(data[seq_length-1])
-    return np.array(sequences, dtype=object), np.array(targets)
+features_tensor = torch.tensor(features, dtype=torch.float32).to(device)
+targets_tensor = torch.tensor(targets, dtype=torch.float32).view(-1, 1).to(device)
 
-# Check if saved sequences file exists
-sequences_file = "../data/sequences_data.npz"
-if os.path.exists(sequences_file):
-    loaded_data = np.load(sequences_file, allow_pickle=True)
-    sequences = loaded_data["sequences"]
-    targets = loaded_data["targets"]
-    print("Sequences loaded from file: " + sequences_file + ".")
-else:
-    sequences, targets = create_variable_sequences(inflation_data)
-    np.savez_compressed(sequences_file, sequences=sequences, targets=targets)
-    print("Sequences generated and saved to file.")
+input_size = features.shape[1]
 
-sequences ,targets = create_variable_sequences(inflation_data)
-sequences_tensor = [torch.tensor(seq, dtype=torch.float32).view(-1, 1) for seq in sequences]
-targets_tensor = torch.tensor(targets, dtype=torch.float32).view(-1, output_size).to(device)
+# Save input_size to .env for running the model later
+env_file = here + "/../.env"
+set_key(env_file, "INPUT_SIZE", str(input_size))
 
 class RNNInflationPredictor(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -79,23 +56,24 @@ print("Starting training...")
 
 for cycle in range(training_cycles):
     model.train()
-    current_loss = 0
+    total_loss = 0
 
-    for seq, target in zip(sequences_tensor, targets_tensor):
-        seq = seq.view(1, -1, input_size).to(device)
-        target = target.view(1, -1)
-        output = model(seq)
+    for feature, target in zip(features_tensor, targets_tensor):
+        # Reshape feature for model input
+        feature = feature.unsqueeze(0).unsqueeze(1).to(device)
+        target = target.unsqueeze(0).to(device)
+
+        # Forward pass
+        output = model(feature)
         loss = criterion(output, target)
+
+        # Backward pass
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        current_loss += loss.item()
 
-    # Decrease learning step
-    if (cycle + 1) % 50 == 0:
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = param_group['lr'] * decay_rate
+        total_loss += loss.item()
 
-    print(f'Cycle {cycle + 1}/{training_cycles}, Average Loss: {current_loss}')
+    print(f'Cycle {cycle + 1}/{training_cycles}, Loss: {total_loss / len(features_tensor):.4f}')
 
-torch.save(model.state_dict(), "../models/inflation_predictor_model_v1.pth")
+torch.save(model.state_dict(), here + "/../models/inflation_predictor_model_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pth")
