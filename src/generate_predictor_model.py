@@ -5,6 +5,7 @@ import pandas as pd
 import os
 from datetime import datetime
 from dotenv import load_dotenv, set_key
+from torch.utils.data import TensorDataset, DataLoader
 
 here = os.path.dirname(__file__)
 
@@ -15,7 +16,7 @@ hidden_size = int(os.getenv("HIDDEN_SIZE"))
 output_size = int(os.getenv("OUTPUT_SIZE"))
 learning_rate = float(os.getenv("LEARNING_RATE"))
 training_cycles = int(os.getenv("TRAINING_CYCLES"))
-
+batch_size = 24576 * 4
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}, {torch.cuda.get_device_name(0)}")
@@ -35,6 +36,9 @@ input_size = features.shape[1]
 # Save input_size to .env for running the model later
 env_file = here + "/../.env"
 set_key(env_file, "INPUT_SIZE", str(input_size))
+
+dataset = TensorDataset(features_tensor, targets_tensor)
+data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 class RNNInflationPredictor(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -58,14 +62,13 @@ for cycle in range(training_cycles):
     model.train()
     total_loss = 0
 
-    for feature, target in zip(features_tensor, targets_tensor):
-        # Reshape feature for model input
-        feature = feature.unsqueeze(0).unsqueeze(1).to(device)
-        target = target.unsqueeze(0).to(device)
+    for batch_features, batch_targets in data_loader:
+        # Reshape for RNN input
+        batch_features = batch_features.unsqueeze(1)
 
         # Forward pass
-        output = model(feature)
-        loss = criterion(output, target)
+        outputs = model(batch_features)
+        loss = criterion(outputs, batch_targets)
 
         # Backward pass
         optimizer.zero_grad()
@@ -74,6 +77,6 @@ for cycle in range(training_cycles):
 
         total_loss += loss.item()
 
-    print(f'Cycle {cycle + 1}/{training_cycles}, Loss: {total_loss / len(features_tensor):.4f}')
+    print(f'Cycle {cycle + 1}/{training_cycles}, Loss: {total_loss / len(data_loader):.4f}')
 
 torch.save(model.state_dict(), here + "/../models/inflation_predictor_model_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".pth")
